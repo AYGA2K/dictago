@@ -54,12 +54,10 @@ func TestTransactionCommands(t *testing.T) {
 	clients[conn] = execClient
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		buf := make([]byte, 1024)
 		server.Read(buf)
-	}()
+	})
 
 	handlers.Exec(conn, clients, m, mlist, streams, listMutex, streamsMutex, waitingClients, replicas)
 	conn.Close()
