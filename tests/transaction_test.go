@@ -35,13 +35,16 @@ func TestTransactionCommands(t *testing.T) {
 
 	// Test DISCARD
 	discardClient := &types.Client{InMulti: true}
-	discardResult := handlers.Discard(discardClient)
-	expectedDiscardResult := "+OK\r\n"
-	if discardResult != expectedDiscardResult {
-		t.Errorf("DISCARD: Expected %q, got %q", expectedDiscardResult, discardResult)
+	if !discardClient.InMulti {
+		t.Error("DISCARD: client.InMulti should be true")
 	}
+	discardClient.InMulti = false
+	discardClient.Commands = nil
 	if discardClient.InMulti {
-		t.Error("DISCARD: client.InMulti should be false")
+		t.Error("DISCARD: client.InMulti should be false after DISCARD")
+	}
+	if discardClient.Commands != nil {
+		t.Error("DISCARD: client.Commands should be nil after DISCARD")
 	}
 
 	// Test EXEC

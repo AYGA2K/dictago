@@ -11,7 +11,7 @@ Dictago supports the following Redis commands:
 - **Stream:** `XADD`, `XRANGE`, `XREAD`
 - **Transactions:** `MULTI`, `EXEC`, `DISCARD`
 - **Connection:** `PING`, `ECHO`
-- **Server:** `INFO`
+- **Server:** `INFO`, `TYPE`
 - **Replication:** `REPLCONF`, `PSYNC`
 
 ## Getting Started

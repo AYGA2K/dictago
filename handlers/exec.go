@@ -11,51 +11,48 @@ import (
 
 func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.SetArg, mlist map[string][]string, streams map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicas *types.ReplicaConns) {
 	client := clients[con]
-	client.InMulti = false
-	numCommands := len(client.Commands)
-	responses := make([]string, numCommands)
-	for i, cmd := range client.Commands {
-		var response string
-		switch strings.ToUpper(cmd[0]) {
+	resp := []string{}
+	for _, commands := range client.Commands {
+		switch strings.ToUpper(commands[0]) {
 		case "PING":
-			response = Ping()
+			resp = append(resp, Ping())
 		case "ECHO":
-			response = Echo(cmd)
+			resp = append(resp, Echo(commands))
 		case "SET":
-			response = Set(cmd, m, replicas)
+			resp = append(resp, Set(commands, m, replicas))
 		case "INCR":
-			response = Incr(cmd, m, replicas)
+			resp = append(resp, Incr(commands, m, replicas))
 		case "GET":
-			response = Get(cmd, m)
+			resp = append(resp, Get(commands, m))
 		case "RPUSH":
-			response = Rpush(cmd, mlist, listMutex, waitingClients, replicas)
+			resp = append(resp, Rpush(commands, mlist, listMutex, waitingClients, replicas))
 		case "LPUSH":
-			response = Lpush(cmd, mlist, listMutex, replicas)
+			resp = append(resp, Lpush(commands, mlist, listMutex, replicas))
 		case "LRANGE":
-			response = Lrange(cmd, mlist, listMutex)
+			resp = append(resp, Lrange(commands, mlist, listMutex))
 		case "LLEN":
-			response = Llen(cmd, mlist, listMutex)
+			resp = append(resp, Llen(commands, mlist, listMutex))
 		case "LPOP":
-			response = Lpop(cmd, mlist, listMutex, replicas)
+			resp = append(resp, Lpop(commands, mlist, listMutex, replicas))
 		case "BLPOP":
-			response = Blpop(cmd, mlist, listMutex, waitingClients)
+			resp = append(resp, Blpop(commands, mlist, listMutex, waitingClients))
 		case "TYPE":
-			response = Type(cmd, m, mlist, streams)
+			resp = append(resp, Type(commands, m, mlist, streams))
 		case "XADD":
-			response = Xadd(cmd, streams, streamsMutex, waitingClients, replicas)
+			resp = append(resp, Xadd(commands, streams, streamsMutex, waitingClients, replicas))
 		case "XRANGE":
-			response = Xrange(cmd, streams, streamsMutex)
+			resp = append(resp, Xrange(commands, streams, streamsMutex))
 		case "XREAD":
-			response = Xread(cmd, streams, streamsMutex, waitingClients)
-		default:
-			response = "-ERR unknown command in MULTI\r\n"
+			resp = append(resp, Xread(commands, streams, streamsMutex, waitingClients))
 		}
-		responses[i] = response
 	}
-	client.Commands = nil
-	responseArray := fmt.Sprintf("*%d\r\n", numCommands)
-	for _, res := range responses {
-		responseArray += res
+	if len(resp) > 0 {
+		var builder strings.Builder
+		builder.WriteString(fmt.Sprintf("*%d\r\n", len(resp)))
+		for _, r := range resp {
+			builder.WriteString(r)
+		}
+		con.Write([]byte(builder.String()))
 	}
-	fmt.Fprint(con, responseArray)
+
 }

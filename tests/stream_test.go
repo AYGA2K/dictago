@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
@@ -32,16 +33,26 @@ func TestStreamCommands(t *testing.T) {
 	// Test XRANGE
 	xrangeCmd := []string{"XRANGE", "mystream", "-", "+"}
 	xrangeResult := handlers.Xrange(xrangeCmd, streams, streamsMutex)
-	expectedXrangeResult := "*2\r\n*2\r\n$3\r\n0-1\r\n*2\r\n$4\r\nname\r\n$4\r\nJohn\r\n*2\r\n"
-	if len(xrangeResult) < len(expectedXrangeResult) {
-		t.Errorf("XRANGE: Expected a result with at least %d characters, got %d", len(expectedXrangeResult), len(xrangeResult))
+	if !strings.HasPrefix(xrangeResult, "*2\r\n") {
+		t.Errorf("XRANGE: Expected an array of 2 elements, got %q", xrangeResult)
+	}
+	if !strings.Contains(xrangeResult, "$4\r\nname\r\n$4\r\nJohn\r\n") {
+		t.Errorf("XRANGE: Expected to find 'name' and 'John' in the response, got %q", xrangeResult)
+	}
+	if !strings.Contains(xrangeResult, "$7\r\nsurname\r\n$3\r\nDoe\r\n") {
+		t.Errorf("XRANGE: Expected to find 'surname' and 'Doe' in the response, got %q", xrangeResult)
 	}
 
 	// Test XREAD
 	xreadCmd := []string{"XREAD", "streams", "mystream", "0-0"}
 	xreadResult := handlers.Xread(xreadCmd, streams, streamsMutex, waitingClients)
-	expectedXreadResult := "*1\r\n*2\r\n$8\r\nmystream\r\n*2\r\n*2\r\n$3\r\n0-1\r\n*2\r\n$4\r\nname\r\n$4\r\nJohn\r\n*2\r\n"
-	if len(xreadResult) < len(expectedXreadResult) {
-		t.Errorf("XREAD: Expected a result with at least %d characters, got %d", len(expectedXreadResult), len(xreadResult))
+	if !strings.HasPrefix(xreadResult, "*1\r\n*2\r\n$8\r\nmystream\r\n") {
+		t.Errorf("XREAD: Expected a response for one stream, got %q", xreadResult)
+	}
+	if !strings.Contains(xreadResult, "$4\r\nname\r\n$4\r\nJohn\r\n") {
+		t.Errorf("XREAD: Expected to find 'name' and 'John' in the response, got %q", xreadResult)
+	}
+	if !strings.Contains(xreadResult, "$7\r\nsurname\r\n$3\r\nDoe\r\n") {
+		t.Errorf("XREAD: Expected to find 'surname' and 'Doe' in the response, got %q", xreadResult)
 	}
 }

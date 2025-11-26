@@ -33,6 +33,7 @@ func Set(commands []string, m map[string]types.SetArg, replicas *types.ReplicaCo
 		m[commands[1]] = setArg
 		replicas.Lock()
 		defer replicas.Unlock()
+		fmt.Println("SET: ", setArg)
 		for _, conn := range replicas.Conns {
 			if conn != nil {
 				command := fmt.Sprintf("*%d\r\n", len(commands))
