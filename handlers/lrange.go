@@ -6,31 +6,34 @@ import (
 	"sync"
 )
 
+// It returns the specified elements of the list stored at a key.
 func Lrange(commands []string, m map[string][]string, listMutex *sync.Mutex) string {
 	listMutex.Lock()
 	defer listMutex.Unlock()
 	if len(commands) < 4 {
-		return "wrong number of arguments for 'lrange'\r\n"
+		return "-ERR wrong number of arguments for 'lrange' command\r\n"
 	}
 
 	key := commands[1]
 	val, ok := m[key]
+	// If the key does not exist, return an empty array.
 	if !ok {
 		return "*0\r\n"
 	}
 
+	// Parse the start and end indices.
 	start, err := strconv.Atoi(commands[2])
 	if err != nil {
-		return "start index is not an integer\r\n"
+		return "-ERR value is not an integer or out of range\r\n"
 	}
 	end, err := strconv.Atoi(commands[3])
 	if err != nil {
-		return "end index is not an integer\r\n"
+		return "-ERR value is not an integer or out of range\r\n"
 	}
 
 	n := len(val)
 
-	// Handle negative indices
+	// Handle negative indices. A negative index means start from the end of the list.
 	if start < 0 {
 		start = n + start
 	}
@@ -38,7 +41,7 @@ func Lrange(commands []string, m map[string][]string, listMutex *sync.Mutex) str
 		end = n + end
 	}
 
-	// Clamp to valid range
+	// Clamp indices to the valid range of the list.
 	if start < 0 {
 		start = 0
 	}
@@ -46,11 +49,12 @@ func Lrange(commands []string, m map[string][]string, listMutex *sync.Mutex) str
 		end = n - 1
 	}
 
-	// Empty or invalid range
+	// If the range is invalid or empty, return an empty array.
 	if start > end || start >= n {
 		return "*0\r\n"
 	}
 
+	// Build the response with the elements in the specified range.
 	response := fmt.Sprintf("*%d\r\n", end-start+1)
 	for _, v := range val[start : end+1] {
 		response += fmt.Sprintf("$%d\r\n%s\r\n", len(v), v)

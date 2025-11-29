@@ -9,9 +9,24 @@ import (
 	"github.com/AYGA2K/dictago/types"
 )
 
+// Exec executes all previously queued commands in a transaction.
 func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.SetArg, mlist map[string][]string, streams map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicas *types.ReplicaConns) {
 	client := clients[con]
+	// Reset the MULTI state for the client.
+	defer func() {
+		client.InMulti = false
+		client.Commands = nil
+	}()
+
+	// If there are no queued commands, return an empty array.
+	if len(client.Commands) == 0 {
+		con.Write([]byte("*0\r\n"))
+		return
+	}
+
+	// Create a slice to store the responses of each command.
 	resp := []string{}
+	// Iterate through the queued commands and execute them.
 	for _, commands := range client.Commands {
 		switch strings.ToUpper(commands[0]) {
 		case "PING":
@@ -44,8 +59,11 @@ func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.S
 			resp = append(resp, Xrange(commands, streams, streamsMutex))
 		case "XREAD":
 			resp = append(resp, Xread(commands, streams, streamsMutex, waitingClients))
+			// Note: Other commands might be added here.
 		}
 	}
+
+	// If there are responses, format them as a RESP array and send them to the client.
 	if len(resp) > 0 {
 		var builder strings.Builder
 		builder.WriteString(fmt.Sprintf("*%d\r\n", len(resp)))
@@ -54,5 +72,4 @@ func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.S
 		}
 		con.Write([]byte(builder.String()))
 	}
-
 }

@@ -17,18 +17,23 @@ import (
 )
 
 func main() {
+	// Command line flags
 	port := flag.Int("port", 6379, "Port number to listen on")
 	replicaof := flag.String("replicaof", "", "flag to start a Redis server as a replica")
 	flag.Parse()
-	m := make(map[string]types.SetArg)
-	mlist := make(map[string][]string)
-	streams := make(map[string][]types.StreamEntry)
-	clients := make(map[net.Conn]*types.Client)
-	replicas := &types.ReplicaConns{}
-	listMutex := &sync.Mutex{}
-	streamsMutex := &sync.Mutex{}
-	waitingClients := make(map[string][]chan any)
-	masterReplid := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+
+	// Data stores
+	m := make(map[string]types.SetArg)                         // For key-value pairs
+	mlist := make(map[string][]string)                         // For lists
+	streams := make(map[string][]types.StreamEntry)            // For streams
+	clients := make(map[net.Conn]*types.Client)                // To track connected clients
+	replicas := &types.ReplicaConns{}                          // To track connected replicas
+	waitingClients := make(map[string][]chan any)              // For blocking operations
+	listMutex := &sync.Mutex{}                                 // Mutex for list operations
+	streamsMutex := &sync.Mutex{}                              // Mutex for stream operations
+	masterReplid := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb" // Hardcoded master replication ID
+
+	// If the server is started as a replica, connect to the master
 	if *replicaof != "" {
 		masterConn, err := utils.ConnectToMaster(*replicaof, *port)
 		if err != nil {
@@ -38,12 +43,18 @@ func main() {
 		clients[masterConn] = &types.Client{}
 		go handleConnection(masterConn, m, mlist, streams, clients, replicas, listMutex, streamsMutex, waitingClients, *replicaof, masterReplid, true)
 	}
+
+	// Start listening for connections on the specified port
 	add := "0.0.0.0:" + strconv.Itoa(*port)
 	l, err := net.Listen("tcp", add)
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
+	defer l.Close()
+	fmt.Printf("Server is listening on port %d\n", *port)
+
+	// Main loop to accept new connections
 	for {
 		con, err := l.Accept()
 		if err != nil {
@@ -55,21 +66,23 @@ func main() {
 	}
 }
 
+// handleConnection manages a single client connection.
 func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string][]string, streams map[string][]types.StreamEntry, clients map[net.Conn]*types.Client, replicas *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicaof string, masterReplid string, isReplica bool) {
 	defer con.Close()
 	reader := bufio.NewReader(con)
 	client := clients[con]
 	replicaOffset := 0
 
+	// If this is a replica connection, perform the initial handshake.
 	if isReplica {
-		// Consume the +FULLRESYNC response
+		// Consume the "+FULLRESYNC..." response from the master.
 		_, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("replica: error reading FULLRESYNC line:", err)
 			return
 		}
 
-		// Consume the RDB file
+		// Consume the RDB file sent by the master.
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("replica: error reading RDB bulk string header:", err)
@@ -83,6 +96,7 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 				return
 			}
 			if length > 0 {
+				// Discard the RDB file content.
 				n, err := reader.Discard(length)
 				if err != nil {
 					fmt.Println("replica: error discarding RDB content:", err)
@@ -96,7 +110,9 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 		}
 	}
 
+	// Loop to read and process commands from the client.
 	for {
+		// Parse the RESP array from the client's request.
 		commands, bytesRead, err := parser.ParseRespArray(reader)
 		if err != nil {
 			fmt.Println("Error parsing:", err.Error())
@@ -106,6 +122,7 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 			continue
 		}
 
+		// If in a MULTI block, queue commands until EXEC or DISCARD.
 		if client.InMulti && (strings.ToUpper(commands[0]) != "EXEC" && strings.ToUpper(commands[0]) != "DISCARD") {
 			client.Commands = append(client.Commands, commands)
 			con.Write([]byte("+QUEUED\r\n"))
@@ -113,6 +130,7 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 		}
 		var response string
 
+		// Dispatch the command to the appropriate handler.
 		switch strings.ToUpper(commands[0]) {
 		case "PING":
 			response = handlers.Ping()
@@ -173,10 +191,13 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 			response = "-ERR unknown command\r\n"
 		}
 
+		// Track the replica's offset for replication purposes.
 		if isReplica {
 			replicaOffset += bytesRead
 		}
+		// Send the response back to the client.
 		if response != "" {
+			// For replicas, only respond to REPLCONF commands.
 			if !isReplica || (isReplica && commands[0] == "REPLCONF") {
 				con.Write([]byte(response))
 			}

@@ -8,6 +8,8 @@ import (
 	"github.com/AYGA2K/dictago/types"
 )
 
+// ParseStreamID parses a stream ID string into its milliseconds and sequence number parts.
+// It also handles the special IDs "+" (infinity) and "-" (zero).
 func ParseStreamID(id string) (int64, int64, error) {
 	if id == "+" {
 		return 9223372036854775807, 9223372036854775807, nil
@@ -30,6 +32,7 @@ func ParseStreamID(id string) (int64, int64, error) {
 	return ms, seq, nil
 }
 
+// InRange checks if a stream entry's ID is within a given range (inclusive).
 func InRange(entry types.StreamEntry, startMs, startSeq, endMs, endSeq int64) bool {
 	entryMs, entrySeq, err := ParseStreamID(entry.ID)
 	if err != nil {
@@ -55,6 +58,7 @@ func InRange(entry types.StreamEntry, startMs, startSeq, endMs, endSeq int64) bo
 	return afterStart && beforeEnd
 }
 
+// IsGreaterThan checks if an entry ID is greater than a start ID.
 func IsGreaterThan(entryID, startID string) (bool, error) {
 	entryMs, entrySeq, err := ParseStreamID(entryID)
 	if err != nil {

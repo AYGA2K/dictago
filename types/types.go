@@ -5,8 +5,10 @@ import (
 )
 
 type SetArg struct {
-	Value     string
-	Ex        int
+	Value string
+	// Ex is the expiration time in seconds.
+	Ex int
+	// Px is the expiration time in milliseconds.
 	Px        int
 	CreatedAt time.Time
 }

@@ -12,33 +12,40 @@ import (
 	"github.com/AYGA2K/dictago/utils"
 )
 
+// It reads from one or more streams, optionally blocking if no new data is available.
 func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMutex *sync.Mutex, waitingClients map[string][]chan any) string {
+	// Parse the arguments from the command.
 	block, timeout, keys, ids, err := parseXreadArgs(commands)
 	if err != nil {
 		return fmt.Sprintf("-ERR %v\r\n", err)
 	}
+	// If the special ID "$" is used, it means we should start reading from the last entry in the stream.
 	if block && len(ids) == 1 && ids[0] == "$" {
 		if val, ok := streams[keys[0]]; ok {
 			ids[0] = val[len(val)-1].ID
 		} else {
+			// If the stream doesn't exist, we can't get the last ID, so return nil.
 			return "*-1\r\n"
 		}
 	}
 
+	// Process the streams and get the initial response.
 	streamsMutex.Lock()
 	response, hasData := processXread(keys, ids, streams)
 	streamsMutex.Unlock()
 
+	// If there is data or if it's not a blocking call, return the response immediately.
 	if hasData || !block {
 		return response
 	}
 
-	// No data, and it's a blocking call.
+	// No data, and it's a blocking call. We need to wait.
 	waitChan := make(chan any)
 	for _, key := range keys {
 		waitingClients[key] = append(waitingClients[key], waitChan)
 	}
 
+	// Set up a context for the timeout.
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if timeout > 0 {
@@ -48,8 +55,10 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	}
 	defer cancel()
 
+	// Block until either we are notified of new data or the timeout occurs.
 	select {
 	case <-waitChan:
+		// We were woken up by an XADD. Reprocess the streams.
 		streamsMutex.Lock()
 		response, _ := processXread(keys, ids, streams)
 		streamsMutex.Unlock()
@@ -57,7 +66,7 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	case <-ctx.Done():
 		// Timeout occurred.
 		streamsMutex.Lock()
-		// Remove our channel from the waiting lists.
+		// Remove our channel from the waiting lists to avoid memory leaks.
 		for _, key := range keys {
 			clients, ok := waitingClients[key]
 			if ok {
@@ -74,12 +83,14 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	}
 }
 
+// parseXreadArgs parses the arguments for the XREAD command.
 func parseXreadArgs(commands []string) (block bool, timeout float64, keys []string, ids []string, err error) {
 	if len(commands) < 4 {
 		return false, 0, nil, nil, fmt.Errorf("wrong number of arguments for 'xread' command")
 	}
 
 	i := 1
+	// Check for the BLOCK option.
 	if strings.ToUpper(commands[i]) == "BLOCK" {
 		block = true
 		i++
@@ -90,11 +101,13 @@ func parseXreadArgs(commands []string) (block bool, timeout float64, keys []stri
 		i++
 	}
 
+	// The STREAMS keyword must be present.
 	if strings.ToUpper(commands[i]) != "STREAMS" {
 		return false, 0, nil, nil, fmt.Errorf("expected STREAMS keyword")
 	}
 	i++
 
+	// The remaining arguments are the keys and their corresponding IDs.
 	numKeys := (len(commands) - i) / 2
 	keys = commands[i : i+numKeys]
 	ids = commands[i+numKeys:]
@@ -106,10 +119,12 @@ func parseXreadArgs(commands []string) (block bool, timeout float64, keys []stri
 	return block, timeout, keys, ids, nil
 }
 
+// processXread processes the streams and generates the response for XREAD.
 func processXread(keys []string, ids []string, streams map[string][]types.StreamEntry) (string, bool) {
 	var response strings.Builder
 	hasData := false
 
+	// The response is an array of streams.
 	response.WriteString(fmt.Sprintf("*%d\r\n", len(keys)))
 
 	for i := range keys {
@@ -117,6 +132,7 @@ func processXread(keys []string, ids []string, streams map[string][]types.Stream
 		startID := ids[i]
 
 		stream, ok := streams[key]
+		// If the stream does not exist, return an empty array for that stream.
 		if !ok {
 			response.WriteString("*2\r\n")
 			response.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(key), key))
@@ -124,6 +140,7 @@ func processXread(keys []string, ids []string, streams map[string][]types.Stream
 			continue
 		}
 
+		// Find all entries with an ID greater than the start ID.
 		var results []types.StreamEntry
 		for _, entry := range stream {
 			isGreater, err := utils.IsGreaterThan(entry.ID, startID)
@@ -139,6 +156,7 @@ func processXread(keys []string, ids []string, streams map[string][]types.Stream
 			hasData = true
 		}
 
+		// Format the stream and its entries.
 		response.WriteString("*2\r\n")
 		response.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(key), key))
 		response.WriteString(fmt.Sprintf("*%d\r\n", len(results)))
