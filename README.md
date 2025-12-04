@@ -19,7 +19,7 @@ Dictago supports the following Redis commands:
 
 ### Prerequisites
 
-- Go 1.24 or higher
+- Go 1.25 or higher
 
 ### Building
 
