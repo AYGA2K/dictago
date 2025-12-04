@@ -17,7 +17,6 @@ func TestTransactionCommands(t *testing.T) {
 	listMutex := &sync.Mutex{}
 	streamsMutex := &sync.Mutex{}
 	waitingClients := make(map[string][]chan any)
-	replicas := &types.ReplicaConns{}
 	clients := make(map[net.Conn]*types.Client)
 
 	// Test MULTI
@@ -62,7 +61,7 @@ func TestTransactionCommands(t *testing.T) {
 		server.Read(buf)
 	})
 
-	handlers.Exec(conn, clients, m, mlist, streams, listMutex, streamsMutex, waitingClients, replicas)
+	handlers.Exec(conn, clients, m, mlist, streams, listMutex, streamsMutex, waitingClients)
 	conn.Close()
 	wg.Wait()
 

@@ -10,8 +10,8 @@ import (
 )
 
 // Exec executes all previously queued commands in a transaction.
-func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.SetArg, mlist map[string][]string, streams map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicas *types.ReplicaConns) {
-	client := clients[con]
+func Exec(con net.Conn, connectedClients map[net.Conn]*types.Client, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any) {
+	client := connectedClients[con]
 	// Reset the MULTI state for the client.
 	defer func() {
 		client.InMulti = false
@@ -34,31 +34,31 @@ func Exec(con net.Conn, clients map[net.Conn]*types.Client, m map[string]types.S
 		case "ECHO":
 			resp = append(resp, Echo(commands))
 		case "SET":
-			resp = append(resp, Set(commands, m, replicas))
+			resp = append(resp, Set(commands, kvStore))
 		case "INCR":
-			resp = append(resp, Incr(commands, m, replicas))
+			resp = append(resp, Incr(commands, kvStore))
 		case "GET":
-			resp = append(resp, Get(commands, m))
+			resp = append(resp, Get(commands, kvStore))
 		case "RPUSH":
-			resp = append(resp, Rpush(commands, mlist, listMutex, waitingClients, replicas))
+			resp = append(resp, Rpush(commands, listStore, listMutex, blockingClients))
 		case "LPUSH":
-			resp = append(resp, Lpush(commands, mlist, listMutex, replicas))
+			resp = append(resp, Lpush(commands, listStore, listMutex))
 		case "LRANGE":
-			resp = append(resp, Lrange(commands, mlist, listMutex))
+			resp = append(resp, Lrange(commands, listStore, listMutex))
 		case "LLEN":
-			resp = append(resp, Llen(commands, mlist, listMutex))
+			resp = append(resp, Llen(commands, listStore, listMutex))
 		case "LPOP":
-			resp = append(resp, Lpop(commands, mlist, listMutex, replicas))
+			resp = append(resp, Lpop(commands, listStore, listMutex))
 		case "BLPOP":
-			resp = append(resp, Blpop(commands, mlist, listMutex, waitingClients))
+			resp = append(resp, Blpop(commands, listStore, listMutex, blockingClients))
 		case "TYPE":
-			resp = append(resp, Type(commands, m, mlist, streams))
+			resp = append(resp, Type(commands, kvStore, listStore, streamStore))
 		case "XADD":
-			resp = append(resp, Xadd(commands, streams, streamsMutex, waitingClients, replicas))
+			resp = append(resp, Xadd(commands, streamStore, streamsMutex, blockingClients))
 		case "XRANGE":
-			resp = append(resp, Xrange(commands, streams, streamsMutex))
+			resp = append(resp, Xrange(commands, streamStore, streamsMutex))
 		case "XREAD":
-			resp = append(resp, Xread(commands, streams, streamsMutex, waitingClients))
+			resp = append(resp, Xread(commands, streamStore, streamsMutex, blockingClients))
 			// Note: Other commands might be added here.
 		}
 	}

@@ -6,7 +6,7 @@ import (
 )
 
 // It provides information and statistics about the server.
-func Info(commands []string, replicaof string, masterReplid string) string {
+func Info(commands []string, replicaOf string, masterReplicationID string) string {
 	// masterReplOffset is hardcoded to 0 for now.
 	masterReplOffset := 0
 
@@ -16,10 +16,10 @@ func Info(commands []string, replicaof string, masterReplid string) string {
 		// Only the "replication" section is currently supported.
 		if section == "replication" {
 			// If the server is a master.
-			if replicaof == "" {
+			if replicaOf == "" {
 				info := fmt.Sprintf(
 					"role:master\r\nmaster_replid:%s\r\nmaster_repl_offset:%d\r\n",
-					masterReplid, masterReplOffset,
+					masterReplicationID, masterReplOffset,
 				)
 				// Return the info as a bulk string.
 				return fmt.Sprintf("$%d\r\n%s\r\n", len(info), info)
@@ -33,7 +33,7 @@ func Info(commands []string, replicaof string, masterReplid string) string {
 	// Default to replication info if no section or an unsupported section is provided.
 	info := fmt.Sprintf(
 		"role:master\r\nmaster_replid:%s\r\nmaster_repl_offset:%d\r\n",
-		masterReplid, masterReplOffset,
+		masterReplicationID, masterReplOffset,
 	)
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(info), info)
 }

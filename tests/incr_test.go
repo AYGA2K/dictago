@@ -9,11 +9,10 @@ import (
 
 func TestIncr(t *testing.T) {
 	m := make(map[string]types.SetArg)
-	replicas := &types.ReplicaConns{}
 
 	// Test INCR on non-existent key
 	incrCmd1 := []string{"INCR", "mykey"}
-	incrResult1 := handlers.Incr(incrCmd1, m, replicas)
+	incrResult1 := handlers.Incr(incrCmd1, m)
 	expectedIncrResult1 := ":1\r\n"
 	if incrResult1 != expectedIncrResult1 {
 		t.Errorf("Expected %q, got %q", expectedIncrResult1, incrResult1)
@@ -21,7 +20,7 @@ func TestIncr(t *testing.T) {
 
 	// Test INCR on existing key
 	incrCmd2 := []string{"INCR", "mykey"}
-	incrResult2 := handlers.Incr(incrCmd2, m, replicas)
+	incrResult2 := handlers.Incr(incrCmd2, m)
 	expectedIncrResult2 := ":2\r\n"
 	if incrResult2 != expectedIncrResult2 {
 		t.Errorf("Expected %q, got %q", expectedIncrResult2, incrResult2)
@@ -29,9 +28,9 @@ func TestIncr(t *testing.T) {
 
 	// Test INCR on a key with a non-integer value
 	setCmd := []string{"SET", "stringkey", "hello"}
-	handlers.Set(setCmd, m, replicas)
+	handlers.Set(setCmd, m)
 	incrCmd3 := []string{"INCR", "stringkey"}
-	incrResult3 := handlers.Incr(incrCmd3, m, replicas)
+	incrResult3 := handlers.Incr(incrCmd3, m)
 	expectedIncrResult3 := "-ERR value is not an integer or out of range\r\n"
 	if incrResult3 != expectedIncrResult3 {
 		t.Errorf("Expected %q, got %q", expectedIncrResult3, incrResult3)

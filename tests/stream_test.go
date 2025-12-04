@@ -12,12 +12,11 @@ import (
 func TestStreamCommands(t *testing.T) {
 	streams := make(map[string][]types.StreamEntry)
 	streamsMutex := &sync.Mutex{}
-	replicas := &types.ReplicaConns{}
 	waitingClients := make(map[string][]chan any)
 
 	// Test XADD
 	xaddCmd := []string{"XADD", "mystream", "0-1", "name", "John"}
-	xaddResult := handlers.Xadd(xaddCmd, streams, streamsMutex, waitingClients, replicas)
+	xaddResult := handlers.Xadd(xaddCmd, streams, streamsMutex, waitingClients)
 	expectedXaddResult := "$3\r\n0-1\r\n"
 	if xaddResult != expectedXaddResult {
 		t.Errorf("XADD: Expected %q, got %q", expectedXaddResult, xaddResult)
@@ -25,7 +24,7 @@ func TestStreamCommands(t *testing.T) {
 
 	// Test XADD with auto-generated ID
 	xaddCmd2 := []string{"XADD", "mystream", "*", "surname", "Doe"}
-	xaddResult2 := handlers.Xadd(xaddCmd2, streams, streamsMutex, waitingClients, replicas)
+	xaddResult2 := handlers.Xadd(xaddCmd2, streams, streamsMutex, waitingClients)
 	if len(xaddResult2) < 1 || xaddResult2[0] != '$' {
 		t.Errorf("XADD with auto-generated ID: Expected a bulk string, got %q", xaddResult2)
 	}

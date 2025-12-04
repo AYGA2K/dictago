@@ -8,10 +8,10 @@ import (
 )
 
 // It retrieves the value of a key.
-func Get(commands []string, m map[string]types.SetArg) string {
+func Get(commands []string, kvStore map[string]types.SetArg) string {
 	if len(commands) > 1 {
 		// Check if the key exists in the map.
-		if val, ok := m[commands[1]]; ok {
+		if val, ok := kvStore[commands[1]]; ok {
 			// Check if the key has expired.
 			if !utils.IsExpired(val) {
 				// If not expired, return the value as a bulk string.

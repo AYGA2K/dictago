@@ -9,7 +9,7 @@ import (
 )
 
 // It returns a range of entries from a stream.
-func Xrange(commands []string, streams map[string][]types.StreamEntry, streamsMutex *sync.Mutex) string {
+func Xrange(commands []string, streamStore map[string][]types.StreamEntry, streamsMutex *sync.Mutex) string {
 	streamsMutex.Lock()
 	defer streamsMutex.Unlock()
 
@@ -33,7 +33,7 @@ func Xrange(commands []string, streams map[string][]types.StreamEntry, streamsMu
 	}
 
 	// If the stream does not exist, return an empty array.
-	stream, ok := streams[key]
+	stream, ok := streamStore[key]
 	if !ok {
 		return "*0\r\n"
 	}

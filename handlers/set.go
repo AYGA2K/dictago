@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +9,7 @@ import (
 )
 
 // It sets the value of a key, with optional expiration.
-func Set(commands []string, m map[string]types.SetArg, replicas *types.ReplicaConns) string {
+func Set(commands []string, kvStore map[string]types.SetArg) string {
 	if len(commands) < 3 {
 		return "-ERR wrong number of arguments for 'set' command\r\n"
 	}
@@ -38,20 +37,7 @@ func Set(commands []string, m map[string]types.SetArg, replicas *types.ReplicaCo
 		}
 	}
 	// Set the key to the new value.
-	m[commands[1]] = setArg
-
-	// Propagate the SET command to all replicas.
-	replicas.Lock()
-	defer replicas.Unlock()
-	for _, conn := range replicas.Conns {
-		if conn != nil {
-			command := fmt.Sprintf("*%d\r\n", len(commands))
-			for _, part := range commands {
-				command += fmt.Sprintf("$%d\r\n%s\r\n", len(part), part)
-			}
-			conn.Write([]byte(command))
-		}
-	}
+	kvStore[commands[1]] = setArg
 
 	// Return a simple string reply.
 	return "+OK\r\n"

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AYGA2K/dictago/handlers"
 	"github.com/AYGA2K/dictago/parser"
@@ -20,18 +21,69 @@ func main() {
 	// Command line flags
 	port := flag.Int("port", 6379, "Port number to listen on")
 	replicaof := flag.String("replicaof", "", "flag to start a Redis server as a replica")
+	dbDir := flag.String("dir", "", "the path to the directory where the RDB file is stored")
+	dbFileName := flag.String("dbfilename", "", "the name of the RDB file")
 	flag.Parse()
 
 	// Data stores
-	m := make(map[string]types.SetArg)                         // For key-value pairs
-	mlist := make(map[string][]string)                         // For lists
-	streams := make(map[string][]types.StreamEntry)            // For streams
-	clients := make(map[net.Conn]*types.Client)                // To track connected clients
-	replicas := &types.ReplicaConns{}                          // To track connected replicas
-	waitingClients := make(map[string][]chan any)              // For blocking operations
-	listMutex := &sync.Mutex{}                                 // Mutex for list operations
-	streamsMutex := &sync.Mutex{}                              // Mutex for stream operations
-	masterReplid := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb" // Hardcoded master replication ID
+	kvStore := make(map[string]types.SetArg)
+	listStore := make(map[string][]string)
+	streamStore := make(map[string][]types.StreamEntry)
+	connectedClients := make(map[net.Conn]*types.Client)
+	replicaConnections := &types.ReplicaConns{}
+	blockingClients := make(map[string][]chan any)
+	listMutex := &sync.Mutex{}
+	streamsMutex := &sync.Mutex{}
+	masterReplicationID := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	masterReplOffset := 0
+	masterReplOffsetMutex := &sync.Mutex{}
+	acks := make(chan int, 10)
+
+	defaultUser := &types.User{
+		Name:      "default",
+		Flags:     []string{"nopass"},
+		Passwords: []string{},
+	}
+	userMutex := &sync.Mutex{}
+
+	if *dbDir != "" && *dbFileName != "" {
+		rdbData, err := parser.ParseRDB(*dbDir + "/" + *dbFileName)
+		if err == nil {
+			now := time.Now()
+			for _, v := range rdbData.Keys {
+				kv := types.SetArg{
+					Value:     v.Value,
+					CreatedAt: now,
+				}
+
+				if v.HasExpire {
+					switch v.Type {
+					case "s":
+						// v.ExpireAt is absolute time in seconds
+						// We need to calculate how many seconds from now until expiration
+						secondsUntilExpire := v.ExpireAt - now.Unix()
+						if secondsUntilExpire > 0 {
+							kv.Ex = int(secondsUntilExpire)
+						} else {
+							// Already expired, skip this key
+							continue
+						}
+					case "ms":
+						// v.ExpireAt is absolute time in milliseconds
+						// Calculate milliseconds from now until expiration
+						msUntilExpire := v.ExpireAt - (now.UnixNano() / 1e6)
+						if msUntilExpire > 0 {
+							kv.Px = int(msUntilExpire)
+						} else {
+							// Already expired, skip this key
+							continue
+						}
+					}
+				}
+				kvStore[v.Key] = kv
+			}
+		}
+	}
 
 	// If the server is started as a replica, connect to the master
 	if *replicaof != "" {
@@ -40,8 +92,8 @@ func main() {
 			fmt.Println("Failed to connect to master:", err)
 			os.Exit(1)
 		}
-		clients[masterConn] = &types.Client{}
-		go handleConnection(masterConn, m, mlist, streams, clients, replicas, listMutex, streamsMutex, waitingClients, *replicaof, masterReplid, true)
+		connectedClients[masterConn] = &types.Client{}
+		go handleConnection(masterConn, kvStore, listStore, streamStore, connectedClients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, true, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
 	}
 
 	// Start listening for connections on the specified port
@@ -61,16 +113,17 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		clients[con] = &types.Client{}
-		go handleConnection(con, m, mlist, streams, clients, replicas, listMutex, streamsMutex, waitingClients, *replicaof, masterReplid, false)
+		connectedClients[con] = &types.Client{}
+		go handleConnection(con, kvStore, listStore, streamStore, connectedClients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, false, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
 	}
 }
 
 // handleConnection manages a single client connection.
-func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string][]string, streams map[string][]types.StreamEntry, clients map[net.Conn]*types.Client, replicas *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicaof string, masterReplid string, isReplica bool) {
+func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry, connectedClients map[net.Conn]*types.Client, replicaConnections *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any, replicaof string, masterReplicationID string, isReplica bool, masterReplOffset *int, masterReplOffsetMutex *sync.Mutex, acks chan int, dbDir, dbFileName string, defaultUser *types.User, userMutex *sync.Mutex) {
+
 	defer con.Close()
 	reader := bufio.NewReader(con)
-	client := clients[con]
+	client := connectedClients[con]
 	replicaOffset := 0
 
 	// If this is a replica connection, perform the initial handshake.
@@ -129,48 +182,91 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 			continue
 		}
 		var response string
+		var commandBytes []byte
+
+		isWriteCommand := false
+		switch strings.ToUpper(commands[0]) {
+		case "SET", "INCR", "RPUSH", "LPUSH", "LPOP", "XADD":
+			isWriteCommand = true
+		}
+
+		if isWriteCommand {
+			commandBytes = utils.GetCommandBytes(commands)
+			masterReplOffsetMutex.Lock()
+			*masterReplOffset += len(commandBytes)
+			masterReplOffsetMutex.Unlock()
+
+			replicaConnections.Lock()
+			for _, conn := range replicaConnections.Conns {
+				if conn != nil {
+					conn.Write(commandBytes)
+				}
+			}
+			replicaConnections.Unlock()
+		}
 
 		// Dispatch the command to the appropriate handler.
 		switch strings.ToUpper(commands[0]) {
 		case "PING":
 			response = handlers.Ping()
 		case "INFO":
-			response = handlers.Info(commands, replicaof, masterReplid)
+			response = handlers.Info(commands, replicaof, masterReplicationID)
 		case "ECHO":
 			response = handlers.Echo(commands)
 		case "SET":
-			response = handlers.Set(commands, m, replicas)
+			response = handlers.Set(commands, kvStore)
 		case "INCR":
-			response = handlers.Incr(commands, m, replicas)
+			response = handlers.Incr(commands, kvStore)
 		case "GET":
-			response = handlers.Get(commands, m)
+			response = handlers.Get(commands, kvStore)
 		case "RPUSH":
-			response = handlers.Rpush(commands, mlist, listMutex, waitingClients, replicas)
+			response = handlers.Rpush(commands, listStore, listMutex, blockingClients)
 		case "LPUSH":
-			response = handlers.Lpush(commands, mlist, listMutex, replicas)
+			response = handlers.Lpush(commands, listStore, listMutex)
 		case "LRANGE":
-			response = handlers.Lrange(commands, mlist, listMutex)
+			response = handlers.Lrange(commands, listStore, listMutex)
 		case "LLEN":
-			response = handlers.Llen(commands, mlist, listMutex)
+			response = handlers.Llen(commands, listStore, listMutex)
 		case "LPOP":
-			response = handlers.Lpop(commands, mlist, listMutex, replicas)
+			response = handlers.Lpop(commands, listStore, listMutex)
 		case "BLPOP":
-			response = handlers.Blpop(commands, mlist, listMutex, waitingClients)
+			response = handlers.Blpop(commands, listStore, listMutex, blockingClients)
 		case "TYPE":
-			response = handlers.Type(commands, m, mlist, streams)
+			response = handlers.Type(commands, kvStore, listStore, streamStore)
 		case "XADD":
-			response = handlers.Xadd(commands, streams, streamsMutex, waitingClients, replicas)
+			response = handlers.Xadd(commands, streamStore, streamsMutex, blockingClients)
 		case "XRANGE":
-			response = handlers.Xrange(commands, streams, streamsMutex)
+			response = handlers.Xrange(commands, streamStore, streamsMutex)
 		case "XREAD":
-			response = handlers.Xread(commands, streams, streamsMutex, waitingClients)
+			response = handlers.Xread(commands, streamStore, streamsMutex, blockingClients)
 		case "MULTI":
 			response = handlers.Multi(client)
 		case "EXEC":
 			if !client.InMulti {
 				response = "-ERR EXEC without MULTI\r\n"
 			} else if len(client.Commands) > 0 {
-				handlers.Exec(con, clients, m, mlist, streams, listMutex, streamsMutex, waitingClients, replicas)
+				for _, cmd := range client.Commands {
+					isWriteCommand := false
+					switch strings.ToUpper(cmd[0]) {
+					case "SET", "INCR", "RPUSH", "LPUSH", "LPOP", "XADD":
+						isWriteCommand = true
+					}
+					if isWriteCommand {
+						commandBytes = utils.GetCommandBytes(cmd)
+						masterReplOffsetMutex.Lock()
+						*masterReplOffset += len(commandBytes)
+						masterReplOffsetMutex.Unlock()
+
+						replicaConnections.Lock()
+						for _, conn := range replicaConnections.Conns {
+							if conn != nil {
+								conn.Write(commandBytes)
+							}
+						}
+						replicaConnections.Unlock()
+					}
+				}
+				handlers.Exec(con, connectedClients, kvStore, listStore, streamStore, listMutex, streamsMutex, blockingClients)
 			} else {
 				response = "*0\r\n"
 				client.InMulti = false
@@ -186,7 +282,16 @@ func handleConnection(con net.Conn, m map[string]types.SetArg, mlist map[string]
 		case "REPLCONF":
 			response = handlers.Replconf(con, commands, replicaOffset)
 		case "PSYNC":
-			handlers.Psync(con, masterReplid, replicas)
+			handlers.Psync(con, masterReplicationID, replicaConnections)
+		case "WAIT":
+			response = handlers.Wait(commands, replicaConnections, acks, *masterReplOffset)
+		case "KEYS":
+			response = handlers.Keys(commands, dbDir, dbFileName)
+		case "ACL":
+			response = handlers.Acl(commands, defaultUser, userMutex)
+		case "AUTH":
+			response = handlers.Auth(commands, *defaultUser)
+
 		default:
 			response = "-ERR unknown command\r\n"
 		}

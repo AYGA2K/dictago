@@ -9,7 +9,7 @@ import (
 )
 
 // It's a blocking pop from the head of a list.
-func Blpop(commands []string, m map[string][]string, listMutex *sync.Mutex, waitingClients map[string][]chan any) string {
+func Blpop(commands []string, listStore map[string][]string, listMutex *sync.Mutex, blockingClients map[string][]chan any) string {
 	if len(commands) < 3 {
 		return "wrong number of arguments for 'blpop' command\r\n"
 	}
@@ -23,9 +23,9 @@ func Blpop(commands []string, m map[string][]string, listMutex *sync.Mutex, wait
 	listMutex.Lock()
 
 	// If the list exists and is not empty, pop the first element and return.
-	if val, ok := m[key]; ok && len(val) > 0 {
+	if val, ok := listStore[key]; ok && len(val) > 0 {
 		popped := val[0]
-		m[key] = val[1:]
+		listStore[key] = val[1:]
 		listMutex.Unlock()
 		return fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(popped), popped)
 	}
@@ -33,7 +33,7 @@ func Blpop(commands []string, m map[string][]string, listMutex *sync.Mutex, wait
 	// If we are here, the list is empty, so we need to block.
 	// Create a channel to wait on.
 	waitChan := make(chan any)
-	waitingClients[key] = append(waitingClients[key], waitChan)
+	blockingClients[key] = append(blockingClients[key], waitChan)
 
 	listMutex.Unlock()
 
@@ -55,20 +55,20 @@ func Blpop(commands []string, m map[string][]string, listMutex *sync.Mutex, wait
 		listMutex.Lock()
 		defer listMutex.Unlock()
 		// The list should now have an element. Pop it and return.
-		if val, ok := m[key]; ok && len(val) > 0 {
+		if val, ok := listStore[key]; ok && len(val) > 0 {
 			popped := val[0]
-			m[key] = val[1:]
+			listStore[key] = val[1:]
 			return fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(popped), popped)
 		}
 	case <-ctx.Done():
 		// Timeout occurred.
 		listMutex.Lock()
 		// Remove our channel from the waiting list to avoid memory leaks.
-		clients, ok := waitingClients[key]
+		clients, ok := blockingClients[key]
 		if ok {
 			for i, c := range clients {
 				if c == waitChan {
-					waitingClients[key] = append(clients[:i], clients[i+1:]...)
+					blockingClients[key] = append(clients[:i], clients[i+1:]...)
 					break
 				}
 			}

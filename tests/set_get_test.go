@@ -9,11 +9,10 @@ import (
 
 func TestSetAndGet(t *testing.T) {
 	m := make(map[string]types.SetArg)
-	replicas := &types.ReplicaConns{}
 
 	// Test SET
 	setCmd := []string{"SET", "mykey", "myvalue"}
-	setResult := handlers.Set(setCmd, m, replicas)
+	setResult := handlers.Set(setCmd, m)
 	expectedSetResult := "+OK\r\n"
 	if setResult != expectedSetResult {
 		t.Errorf("Expected %q, got %q", expectedSetResult, setResult)

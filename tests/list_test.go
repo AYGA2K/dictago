@@ -5,29 +5,27 @@ import (
 	"testing"
 
 	"github.com/AYGA2K/dictago/handlers"
-	"github.com/AYGA2K/dictago/types"
 )
 
 func TestListCommands(t *testing.T) {
 	mlist := make(map[string][]string)
 	listMutex := &sync.Mutex{}
-	replicas := &types.ReplicaConns{}
 	waitingClients := make(map[string][]chan any)
 
 	// Test LPUSH
 	lpushCmd := []string{"LPUSH", "mylist", "world"}
-	lpushResult := handlers.Lpush(lpushCmd, mlist, listMutex, replicas)
+	lpushResult := handlers.Lpush(lpushCmd, mlist, listMutex)
 	expectedLpushResult := ":1\r\n"
 	if lpushResult != expectedLpushResult {
 		t.Errorf("LPUSH: Expected %q, got %q", expectedLpushResult, lpushResult)
 	}
 
 	lpushCmd2 := []string{"LPUSH", "mylist", "hello"}
-	handlers.Lpush(lpushCmd2, mlist, listMutex, replicas)
+	handlers.Lpush(lpushCmd2, mlist, listMutex)
 
 	// Test RPUSH
 	rpushCmd := []string{"RPUSH", "mylist", "!"}
-	rpushResult := handlers.Rpush(rpushCmd, mlist, listMutex, waitingClients, replicas)
+	rpushResult := handlers.Rpush(rpushCmd, mlist, listMutex, waitingClients)
 	expectedRpushResult := ":3\r\n"
 	if rpushResult != expectedRpushResult {
 		t.Errorf("RPUSH: Expected %q, got %q", expectedRpushResult, rpushResult)
@@ -51,16 +49,16 @@ func TestListCommands(t *testing.T) {
 
 	// Test LPOP
 	lpopCmd := []string{"LPOP", "mylist"}
-	lpopResult := handlers.Lpop(lpopCmd, mlist, listMutex, replicas)
+	lpopResult := handlers.Lpop(lpopCmd, mlist, listMutex)
 	expectedLpopResult := "$5\r\nhello\r\n"
 	if lpopResult != expectedLpopResult {
 		t.Errorf("LPOP: Expected %q, got %q", expectedLpopResult, lpopResult)
 	}
 
 	// Test LPOP on empty list
-	handlers.Lpop(lpopCmd, mlist, listMutex, replicas)
-	handlers.Lpop(lpopCmd, mlist, listMutex, replicas)
-	lpopResultEmpty := handlers.Lpop(lpopCmd, mlist, listMutex, replicas)
+	handlers.Lpop(lpopCmd, mlist, listMutex)
+	handlers.Lpop(lpopCmd, mlist, listMutex)
+	lpopResultEmpty := handlers.Lpop(lpopCmd, mlist, listMutex)
 	expectedLpopResultEmpty := "$-1\r\n"
 	if lpopResultEmpty != expectedLpopResultEmpty {
 		t.Errorf("LPOP on empty list: Expected %q, got %q", expectedLpopResultEmpty, lpopResultEmpty)

@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-
-	"github.com/AYGA2K/dictago/types"
 )
 
 // It removes and returns the first element of a list.
-func Lpop(commands []string, m map[string][]string, listMutex *sync.Mutex, replicas *types.ReplicaConns) string {
+func Lpop(commands []string, listStore map[string][]string, listMutex *sync.Mutex) string {
 	listMutex.Lock()
 	defer listMutex.Unlock()
 	if len(commands) < 2 {
@@ -17,23 +15,10 @@ func Lpop(commands []string, m map[string][]string, listMutex *sync.Mutex, repli
 	}
 
 	key := commands[1]
-	val, ok := m[key]
+	val, ok := listStore[key]
 	// If the key does not exist or the list is empty, return null.
 	if !ok || len(val) == 0 {
 		return "$-1\r\n"
-	}
-
-	// Propagate the LPOP command to all replicas.
-	replicas.Lock()
-	defer replicas.Unlock()
-	for _, conn := range replicas.Conns {
-		if conn != nil {
-			command := fmt.Sprintf("*%d\r\n", len(commands))
-			for _, part := range commands {
-				command += fmt.Sprintf("$%d\r\n%s\r\n", len(part), part)
-			}
-			conn.Write([]byte(command))
-		}
 	}
 
 	// If a count is provided, pop that many elements.
@@ -48,7 +33,7 @@ func Lpop(commands []string, m map[string][]string, listMutex *sync.Mutex, repli
 		}
 
 		popped := val[:count]
-		m[key] = val[count:]
+		listStore[key] = val[count:]
 
 		// Return the popped elements as an array of bulk strings.
 		response := fmt.Sprintf("*%d\r\n", len(popped))
@@ -60,7 +45,7 @@ func Lpop(commands []string, m map[string][]string, listMutex *sync.Mutex, repli
 
 	// If no count is provided, pop one element.
 	popped := val[0]
-	m[key] = val[1:]
+	listStore[key] = val[1:]
 	// Return the popped element as a bulk string.
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(popped), popped)
 }

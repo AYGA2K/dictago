@@ -13,11 +13,10 @@ func TestTypeCommand(t *testing.T) {
 	mlist := make(map[string][]string)
 	streams := make(map[string][]types.StreamEntry)
 	listMutex := &sync.Mutex{}
-	replicas := &types.ReplicaConns{}
 
 	// Test TYPE on string
 	setCmd := []string{"SET", "mykey", "myvalue"}
-	handlers.Set(setCmd, m, replicas)
+	handlers.Set(setCmd, m)
 	typeCmd1 := []string{"TYPE", "mykey"}
 	typeResult1 := handlers.Type(typeCmd1, m, mlist, streams)
 	expectedTypeResult1 := "+string\r\n"
@@ -27,7 +26,7 @@ func TestTypeCommand(t *testing.T) {
 
 	// Test TYPE on list
 	lpushCmd := []string{"LPUSH", "mylist", "world"}
-	handlers.Lpush(lpushCmd, mlist, listMutex, replicas)
+	handlers.Lpush(lpushCmd, mlist, listMutex)
 	typeCmd2 := []string{"TYPE", "mylist"}
 	typeResult2 := handlers.Type(typeCmd2, m, mlist, streams)
 	expectedTypeResult2 := "+list\r\n"
@@ -39,7 +38,7 @@ func TestTypeCommand(t *testing.T) {
 	xaddCmd := []string{"XADD", "mystream", "0-1", "name", "John"}
 	streamsMutex := &sync.Mutex{}
 	waitingClients := make(map[string][]chan any)
-	handlers.Xadd(xaddCmd, streams, streamsMutex, waitingClients, replicas)
+	handlers.Xadd(xaddCmd, streams, streamsMutex, waitingClients)
 	typeCmd3 := []string{"TYPE", "mystream"}
 	typeResult3 := handlers.Type(typeCmd3, m, mlist, streams)
 	expectedTypeResult3 := "+stream\r\n"

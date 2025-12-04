@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/AYGA2K/dictago/types"
 	"github.com/AYGA2K/dictago/utils"
 )
 
 // It prepends one or multiple values to a list.
-func Lpush(commands []string, m map[string][]string, listMutex *sync.Mutex, replicas *types.ReplicaConns) string {
+func Lpush(commands []string, listStore map[string][]string, listMutex *sync.Mutex) string {
 	if len(commands) < 3 {
 		return "-ERR wrong number of arguments for 'lpush' command\r\n"
 	}
@@ -22,26 +21,14 @@ func Lpush(commands []string, m map[string][]string, listMutex *sync.Mutex, repl
 	list := []string{}
 	list = append(list, valuesToAdd...)
 	// If the key does not exist, create a new list.
-	if val, ok := m[key]; !ok {
-		m[key] = list
+	if val, ok := listStore[key]; !ok {
+		listStore[key] = list
 	} else {
 		// If the key exists, prepend the new values to the existing list.
 		list = append(list, val...)
-		m[key] = list
+		listStore[key] = list
 	}
 
-	// Propagate the LPUSH command to all replicas.
-	replicas.Lock()
-	defer replicas.Unlock()
-	for _, conn := range replicas.Conns {
-		if conn != nil {
-			command := fmt.Sprintf("*%d\r\n", len(commands))
-			for _, part := range commands {
-				command += fmt.Sprintf("$%d\r\n%s\r\n", len(part), part)
-			}
-			conn.Write([]byte(command))
-		}
-	}
 	// Return the length of the list after the push operation.
 	return fmt.Sprintf(":%d\r\n", len(list))
 }

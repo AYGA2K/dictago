@@ -7,7 +7,7 @@ import (
 )
 
 // It returns the specified elements of the list stored at a key.
-func Lrange(commands []string, m map[string][]string, listMutex *sync.Mutex) string {
+func Lrange(commands []string, listStore map[string][]string, listMutex *sync.Mutex) string {
 	listMutex.Lock()
 	defer listMutex.Unlock()
 	if len(commands) < 4 {
@@ -15,7 +15,7 @@ func Lrange(commands []string, m map[string][]string, listMutex *sync.Mutex) str
 	}
 
 	key := commands[1]
-	val, ok := m[key]
+	val, ok := listStore[key]
 	// If the key does not exist, return an empty array.
 	if !ok {
 		return "*0\r\n"

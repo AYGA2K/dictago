@@ -12,7 +12,7 @@ import (
 )
 
 // It adds a new entry to a stream.
-func Xadd(commands []string, streams map[string][]types.StreamEntry, streamsMutex *sync.Mutex, waitingClients map[string][]chan any, replicas *types.ReplicaConns) string {
+func Xadd(commands []string, streamStore map[string][]types.StreamEntry, streamsMutex *sync.Mutex, blockingClients map[string][]chan any) string {
 	streamsMutex.Lock()
 	defer streamsMutex.Unlock()
 	if len(commands) < 5 {
@@ -23,7 +23,7 @@ func Xadd(commands []string, streams map[string][]types.StreamEntry, streamsMute
 	id := commands[2]
 
 	// Generate a new ID if necessary (e.g., if the provided ID is "*").
-	newID, err := generateID(id, streams[key])
+	newID, err := generateID(id, streamStore[key])
 	if err != nil {
 		return fmt.Sprintf("-ERR %v\r\n", err)
 	}
@@ -35,8 +35,8 @@ func Xadd(commands []string, streams map[string][]types.StreamEntry, streamsMute
 	}
 
 	// Check if the new ID is greater than the last ID in the stream.
-	if len(streams[key]) > 0 {
-		lastID := streams[key][len(streams[key])-1].ID
+	if len(streamStore[key]) > 0 {
+		lastID := streamStore[key][len(streamStore[key])-1].ID
 		if !isNewIDGreater(newID, lastID) {
 			return "-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n"
 		}
@@ -50,28 +50,16 @@ func Xadd(commands []string, streams map[string][]types.StreamEntry, streamsMute
 
 	// Create the new stream entry and add it to the stream.
 	entry := types.StreamEntry{ID: newID, Data: data}
-	streams[key] = append(streams[key], entry)
+	streamStore[key] = append(streamStore[key], entry)
 
 	// Notify any clients that are waiting on this stream (from XREAD).
-	if clients, ok := waitingClients[key]; ok && len(clients) > 0 {
+	if clients, ok := blockingClients[key]; ok && len(clients) > 0 {
 		for _, clientChan := range clients {
 			close(clientChan)
 		}
-		delete(waitingClients, key)
+		delete(blockingClients, key)
 	}
 
-	// Propagate the XADD command to all replicas.
-	replicas.Lock()
-	defer replicas.Unlock()
-	for _, conn := range replicas.Conns {
-		if conn != nil {
-			command := fmt.Sprintf("*%d\r\n", len(commands))
-			for _, part := range commands {
-				command += fmt.Sprintf("$%d\r\n%s\r\n", len(part), part)
-			}
-			conn.Write([]byte(command))
-		}
-	}
 	// Return the new ID as a bulk string.
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(newID), newID)
 }

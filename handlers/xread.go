@@ -13,7 +13,7 @@ import (
 )
 
 // It reads from one or more streams, optionally blocking if no new data is available.
-func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMutex *sync.Mutex, waitingClients map[string][]chan any) string {
+func Xread(commands []string, streamStore map[string][]types.StreamEntry, streamsMutex *sync.Mutex, blockingClients map[string][]chan any) string {
 	// Parse the arguments from the command.
 	block, timeout, keys, ids, err := parseXreadArgs(commands)
 	if err != nil {
@@ -21,7 +21,7 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	}
 	// If the special ID "$" is used, it means we should start reading from the last entry in the stream.
 	if block && len(ids) == 1 && ids[0] == "$" {
-		if val, ok := streams[keys[0]]; ok {
+		if val, ok := streamStore[keys[0]]; ok {
 			ids[0] = val[len(val)-1].ID
 		} else {
 			// If the stream doesn't exist, we can't get the last ID, so return nil.
@@ -31,7 +31,7 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 
 	// Process the streams and get the initial response.
 	streamsMutex.Lock()
-	response, hasData := processXread(keys, ids, streams)
+	response, hasData := processXread(keys, ids, streamStore)
 	streamsMutex.Unlock()
 
 	// If there is data or if it's not a blocking call, return the response immediately.
@@ -42,7 +42,7 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	// No data, and it's a blocking call. We need to wait.
 	waitChan := make(chan any)
 	for _, key := range keys {
-		waitingClients[key] = append(waitingClients[key], waitChan)
+		blockingClients[key] = append(blockingClients[key], waitChan)
 	}
 
 	// Set up a context for the timeout.
@@ -60,7 +60,7 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 	case <-waitChan:
 		// We were woken up by an XADD. Reprocess the streams.
 		streamsMutex.Lock()
-		response, _ := processXread(keys, ids, streams)
+		response, _ := processXread(keys, ids, streamStore)
 		streamsMutex.Unlock()
 		return response
 	case <-ctx.Done():
@@ -68,11 +68,11 @@ func Xread(commands []string, streams map[string][]types.StreamEntry, streamsMut
 		streamsMutex.Lock()
 		// Remove our channel from the waiting lists to avoid memory leaks.
 		for _, key := range keys {
-			clients, ok := waitingClients[key]
+			clients, ok := blockingClients[key]
 			if ok {
 				for i, c := range clients {
 					if c == waitChan {
-						waitingClients[key] = append(clients[:i], clients[i+1:]...)
+						blockingClients[key] = append(clients[:i], clients[i+1:]...)
 						break
 					}
 				}
