@@ -195,7 +195,10 @@ func handleConnection(con net.Conn, kvStore map[string]types.KVEntry, listStore 
 		}
 
 		if !clients[con].Connected && strings.ToUpper(commands[0]) != "AUTH" {
-			con.Write([]byte("-NOAUTH Authentication required.\r\n"))
+			_, err := con.Write([]byte("-NOAUTH Authentication required.\r\n"))
+			if err != nil {
+				fmt.Printf("Error NOAUTH response: %v\n", err)
+			}
 			continue
 		}
 
