@@ -85,12 +85,12 @@ func generateID(id string, stream []types.StreamEntry) (string, error) {
 
 	parts := strings.Split(id, "-")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("Invalid stream ID specified as stream argument")
+		return "", fmt.Errorf("invalid stream ID specified as stream argument")
 	}
 
 	ms, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("Invalid stream ID specified as stream argument")
+		return "", fmt.Errorf("invalid stream ID specified as stream argument")
 	}
 
 	// If the sequence number is "*", generate a new sequence number.
@@ -109,12 +109,12 @@ func generateID(id string, stream []types.StreamEntry) (string, error) {
 		if ms == lastMs {
 			return fmt.Sprintf("%d-%d", ms, lastSeq+1), nil
 		}
-		return "", fmt.Errorf("The ID specified in XADD is equal or smaller than the target stream top item")
+		return "", fmt.Errorf("the ID specified in XADD is equal or smaller than the target stream top item")
 	}
 
 	_, err = strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("Invalid stream ID specified as stream argument")
+		return "", fmt.Errorf("invalid stream ID specified as stream argument")
 	}
 
 	return id, nil

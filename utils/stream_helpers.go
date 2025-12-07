@@ -39,21 +39,9 @@ func InRange(entry types.StreamEntry, startMs, startSeq, endMs, endSeq int64) bo
 		return false
 	}
 
-	afterStart := false
-	if entryMs > startMs {
-		afterStart = true
-	}
-	if entryMs == startMs && entrySeq >= startSeq {
-		afterStart = true
-	}
+	afterStart := entryMs > startMs || (entryMs == startMs && entrySeq >= startSeq)
 
-	beforeEnd := false
-	if entryMs < endMs {
-		beforeEnd = true
-	}
-	if entryMs == endMs && entrySeq <= endSeq {
-		beforeEnd = true
-	}
+	beforeEnd := entryMs < endMs || (entryMs == endMs && entrySeq <= endSeq)
 
 	return afterStart && beforeEnd
 }

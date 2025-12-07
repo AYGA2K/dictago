@@ -13,7 +13,10 @@ import (
 func Psync(con net.Conn, masterReplid string, replicas *types.ReplicaConns) {
 	// Respond with a FULLRESYNC message, indicating a full synchronization will occur.
 	response := fmt.Sprintf("+FULLRESYNC %s 0\r\n", masterReplid)
-	con.Write([]byte(response))
+	if _, err := con.Write([]byte(response)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing FULLRESYNC response: %v\n", err)
+		return
+	}
 
 	// Read the RDB file content.
 	// NOTE: This assumes an empty RDB file named "rdb" exists in the root directory.
@@ -31,7 +34,10 @@ func Psync(con net.Conn, masterReplid string, replicas *types.ReplicaConns) {
 	}
 
 	// Send the RDB file to the replica as a bulk string.
-	fmt.Fprintf(con, "$%d\r\n%s", len(decodedContent), decodedContent)
+	if _, err := fmt.Fprintf(con, "$%d\r\n%s", len(decodedContent), decodedContent); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing RDB data: %v\n", err)
+		return
+	}
 
 	// Add the connection to the list of replicas.
 	replicas.Lock()

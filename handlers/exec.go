@@ -20,7 +20,9 @@ func Exec(con net.Conn, connectedClients map[net.Conn]*types.Client, kvStore map
 
 	// If there are no queued commands, return an empty array.
 	if len(client.Commands) == 0 {
-		con.Write([]byte("*0\r\n"))
+		if _, err := con.Write([]byte("*0\r\n")); err != nil {
+			fmt.Printf("Error writing empty EXEC response: %v\n", err)
+		}
 		return
 	}
 
@@ -70,6 +72,8 @@ func Exec(con net.Conn, connectedClients map[net.Conn]*types.Client, kvStore map
 		for _, r := range resp {
 			builder.WriteString(r)
 		}
-		con.Write([]byte(builder.String()))
+		if _, err := con.Write([]byte(builder.String())); err != nil {
+			fmt.Printf("Error writing EXEC response: %v\n", err)
+		}
 	}
 }

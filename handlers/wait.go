@@ -41,7 +41,10 @@ func Wait(commands []string, replicas *types.ReplicaConns, acks chan int, master
 
 	// Send the REPLCONF GETACK * command to all replicas
 	for _, con := range replicas.Conns {
-		con.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n"))
+		if _, err := con.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")); err != nil {
+			// Log error but continue with other replicas
+			continue
+		}
 	}
 	// Wait for acknowledgements from replicas
 	ackCount := 0

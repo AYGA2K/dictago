@@ -103,7 +103,11 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
-	defer l.Close()
+	defer func() {
+		if err := l.Close(); err != nil {
+			fmt.Printf("Error closing listener: %v\n", err)
+		}
+	}()
 	fmt.Printf("Server is listening on port %d\n", *port)
 
 	// Main loop to accept new connections
@@ -121,7 +125,11 @@ func main() {
 // handleConnection manages a single client connection.
 func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry, connectedClients map[net.Conn]*types.Client, replicaConnections *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any, replicaof string, masterReplicationID string, isReplica bool, masterReplOffset *int, masterReplOffsetMutex *sync.Mutex, acks chan int, dbDir, dbFileName string, defaultUser *types.User, userMutex *sync.Mutex) {
 
-	defer con.Close()
+	defer func() {
+		if err := con.Close(); err != nil {
+			fmt.Printf("Error closing connection: %v\n", err)
+		}
+	}()
 	reader := bufio.NewReader(con)
 	client := connectedClients[con]
 	replicaOffset := 0
@@ -178,7 +186,10 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 		// If in a MULTI block, queue commands until EXEC or DISCARD.
 		if client.InMulti && (strings.ToUpper(commands[0]) != "EXEC" && strings.ToUpper(commands[0]) != "DISCARD") {
 			client.Commands = append(client.Commands, commands)
-			con.Write([]byte("+QUEUED\r\n"))
+			if _, err := con.Write([]byte("+QUEUED\r\n")); err != nil {
+				fmt.Printf("Error writing QUEUED response: %v\n", err)
+				return
+			}
 			continue
 		}
 		var response string
@@ -199,7 +210,9 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 			replicaConnections.Lock()
 			for _, conn := range replicaConnections.Conns {
 				if conn != nil {
-					conn.Write(commandBytes)
+					if _, err := conn.Write(commandBytes); err != nil {
+						fmt.Printf("Error writing command to replica: %v\n", err)
+					}
 				}
 			}
 			replicaConnections.Unlock()
@@ -260,7 +273,9 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 						replicaConnections.Lock()
 						for _, conn := range replicaConnections.Conns {
 							if conn != nil {
-								conn.Write(commandBytes)
+								if _, err := conn.Write(commandBytes); err != nil {
+									fmt.Printf("Error writing command to replica: %v\n", err)
+								}
 							}
 						}
 						replicaConnections.Unlock()
@@ -304,7 +319,10 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 		if response != "" {
 			// For replicas, only respond to REPLCONF commands.
 			if !isReplica || (isReplica && commands[0] == "REPLCONF") {
-				con.Write([]byte(response))
+				if _, err := con.Write([]byte(response)); err != nil {
+					fmt.Printf("Error writing response: %v\n", err)
+					return
+				}
 			}
 		}
 	}

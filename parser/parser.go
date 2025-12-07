@@ -81,7 +81,11 @@ func ParseRDB(path string) (*types.ParsedRDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Printf("Error closing file: %v\n", err)
+		}
+	}()
 
 	p := &types.ParsedRDB{}
 
@@ -114,7 +118,9 @@ func ParseRDB(path string) (*types.ParsedRDB, error) {
 		}
 
 		// If it's not FA, it's part of DB section — go back 1 byte
-		f.Seek(-1, io.SeekCurrent)
+		if _, err := f.Seek(-1, io.SeekCurrent); err != nil {
+			return nil, err
+		}
 		break
 	}
 
@@ -139,7 +145,9 @@ func ParseRDB(path string) (*types.ParsedRDB, error) {
 
 		case 0xFC, 0xFD, 0x00:
 			// The marker is actually part of a key record
-			f.Seek(-1, io.SeekCurrent)
+			if _, err := f.Seek(-1, io.SeekCurrent); err != nil {
+				return nil, err
+			}
 			key, err := parseKey(f)
 			if err != nil {
 				return nil, err
@@ -149,7 +157,9 @@ func ParseRDB(path string) (*types.ParsedRDB, error) {
 		case 0xFF:
 			// END OF FILE SECTION
 			checksum := make([]byte, 8)
-			io.ReadFull(f, checksum)
+			if _, err := io.ReadFull(f, checksum); err != nil {
+				return nil, err
+			}
 
 			return p, nil
 
@@ -173,7 +183,9 @@ func parseKey(r io.Reader) (types.RDBKey, error) {
 	switch first {
 	case 0xFC: // expire in ms
 		buf := make([]byte, 8)
-		io.ReadFull(r, buf)
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return key, err
+		}
 		key.ExpireAt = int64(binary.LittleEndian.Uint64(buf))
 		key.HasExpire = true
 		key.Type = "ms"
@@ -185,7 +197,9 @@ func parseKey(r io.Reader) (types.RDBKey, error) {
 
 	case 0xFD: // expire in seconds
 		buf := make([]byte, 4)
-		io.ReadFull(r, buf)
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return key, err
+		}
 		secs := binary.LittleEndian.Uint32(buf)
 		key.ExpireAt = int64(secs)
 		key.HasExpire = true

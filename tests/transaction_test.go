@@ -58,11 +58,16 @@ func TestTransactionCommands(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		buf := make([]byte, 1024)
-		server.Read(buf)
+		_, err := server.Read(buf)
+		if err != nil {
+			t.Errorf("Error reading from server: %v", err)
+		}
 	})
 
 	handlers.Exec(conn, clients, m, mlist, streams, listMutex, streamsMutex, waitingClients)
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		t.Errorf("Error closing connection: %v", err)
+	}
 	wg.Wait()
 
 	// We can't easily test the response from Exec as it writes directly to the connection.
