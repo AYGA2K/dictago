@@ -9,7 +9,7 @@ import (
 )
 
 // It increments the integer value of a key by one.
-func Incr(commands []string, kvStore map[string]types.SetArg) string {
+func Incr(commands []string, kvStore map[string]types.KVEntry) string {
 	if len(commands) < 2 {
 		return "-ERR wrong number of arguments for 'incr' command\r\n"
 	}
@@ -28,7 +28,7 @@ func Incr(commands []string, kvStore map[string]types.SetArg) string {
 		return fmt.Sprintf(":%d\r\n", intVal)
 	}
 	// If the key does not exist, set it to 1.
-	new := types.SetArg{
+	new := types.KVEntry{
 		Value:     "1",
 		CreatedAt: time.Now(),
 	}

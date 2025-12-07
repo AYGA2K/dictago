@@ -9,7 +9,7 @@ import (
 	"github.com/AYGA2K/dictago/types"
 )
 
-func Auth(commands []string, defaultUser types.User) string {
+func Auth(commands []string, defaultUser types.User, client *types.Client) string {
 	if len(commands) < 3 {
 		return "-ERR wrong number of arguments for 'auth' command\r\n"
 	}
@@ -35,6 +35,7 @@ func Auth(commands []string, defaultUser types.User) string {
 
 	// Check if the hash matches any stored password
 	if slices.Contains(defaultUser.Passwords, passwordHash) {
+		client.Connected = true
 		return "+OK\r\n"
 	}
 

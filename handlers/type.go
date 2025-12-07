@@ -3,7 +3,7 @@ package handlers
 import "github.com/AYGA2K/dictago/types"
 
 // It returns the string representation of the type of the value stored at a key.
-func Type(commands []string, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry) string {
+func Type(commands []string, kvStore map[string]types.KVEntry, listStore map[string][]string, streamStore map[string][]types.StreamEntry) string {
 	if len(commands) < 2 {
 		return "-ERR wrong number of arguments for 'type' command\r\n"
 	}

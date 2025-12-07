@@ -9,11 +9,11 @@ import (
 )
 
 // It sets the value of a key, with optional expiration.
-func Set(commands []string, kvStore map[string]types.SetArg) string {
+func Set(commands []string, kvStore map[string]types.KVEntry) string {
 	if len(commands) < 3 {
 		return "-ERR wrong number of arguments for 'set' command\r\n"
 	}
-	setArg := types.SetArg{
+	setArg := types.KVEntry{
 		Value:     commands[2],
 		CreatedAt: time.Now(),
 	}

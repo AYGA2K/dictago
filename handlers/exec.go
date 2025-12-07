@@ -10,8 +10,8 @@ import (
 )
 
 // Exec executes all previously queued commands in a transaction.
-func Exec(con net.Conn, connectedClients map[net.Conn]*types.Client, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any) {
-	client := connectedClients[con]
+func Exec(con net.Conn, clients map[net.Conn]*types.Client, kvStore map[string]types.KVEntry, listStore map[string][]string, streamStore map[string][]types.StreamEntry, listMutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any) {
+	client := clients[con]
 	// Reset the MULTI state for the client.
 	defer func() {
 		client.InMulti = false
@@ -61,7 +61,6 @@ func Exec(con net.Conn, connectedClients map[net.Conn]*types.Client, kvStore map
 			resp = append(resp, Xrange(commands, streamStore, streamsMutex))
 		case "XREAD":
 			resp = append(resp, Xread(commands, streamStore, streamsMutex, blockingClients))
-			// Note: Other commands might be added here.
 		}
 	}
 

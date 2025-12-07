@@ -8,7 +8,7 @@ import (
 )
 
 func TestSetAndGet(t *testing.T) {
-	m := make(map[string]types.SetArg)
+	m := make(map[string]types.KVEntry)
 
 	// Test SET
 	setCmd := []string{"SET", "mykey", "myvalue"}

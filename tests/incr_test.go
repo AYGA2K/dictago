@@ -8,7 +8,7 @@ import (
 )
 
 func TestIncr(t *testing.T) {
-	m := make(map[string]types.SetArg)
+	m := make(map[string]types.KVEntry)
 
 	// Test INCR on non-existent key
 	incrCmd1 := []string{"INCR", "mykey"}

@@ -7,7 +7,7 @@ import (
 )
 
 // IsExpired checks if a key has expired based on its creation time and expiration settings.
-func IsExpired(arg types.SetArg) bool {
+func IsExpired(arg types.KVEntry) bool {
 	now := time.Now()
 
 	// Check if ex (expiration in seconds) is set and if the key has expired.

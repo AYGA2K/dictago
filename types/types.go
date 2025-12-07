@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type SetArg struct {
+type KVEntry struct {
 	Value string
 	// Ex is the expiration time in seconds.
 	Ex int
@@ -42,7 +42,8 @@ type Client struct {
 	// InMulti is true if the client is in a MULTI...EXEC block.
 	InMulti bool
 	// Commands is a queue of commands to be executed in a transaction.
-	Commands [][]string
+	Commands  [][]string
+	Connected bool
 }
 
 type User struct {

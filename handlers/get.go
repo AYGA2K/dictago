@@ -7,8 +7,7 @@ import (
 	"github.com/AYGA2K/dictago/utils"
 )
 
-// It retrieves the value of a key.
-func Get(commands []string, kvStore map[string]types.SetArg) string {
+func Get(commands []string, kvStore map[string]types.KVEntry) string {
 	if len(commands) > 1 {
 		// Check if the key exists in the map.
 		if val, ok := kvStore[commands[1]]; ok {

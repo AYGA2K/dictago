@@ -9,7 +9,7 @@ import (
 )
 
 func TestTypeCommand(t *testing.T) {
-	m := make(map[string]types.SetArg)
+	m := make(map[string]types.KVEntry)
 	mlist := make(map[string][]string)
 	streams := make(map[string][]types.StreamEntry)
 	listMutex := &sync.Mutex{}

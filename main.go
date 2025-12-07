@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,10 +27,10 @@ func main() {
 	flag.Parse()
 
 	// Data stores
-	kvStore := make(map[string]types.SetArg)
+	kvStore := make(map[string]types.KVEntry)
 	listStore := make(map[string][]string)
 	streamStore := make(map[string][]types.StreamEntry)
-	connectedClients := make(map[net.Conn]*types.Client)
+	clients := make(map[net.Conn]*types.Client)
 	replicaConnections := &types.ReplicaConns{}
 	blockingClients := make(map[string][]chan any)
 	listMutex := &sync.Mutex{}
@@ -51,7 +52,7 @@ func main() {
 		if err == nil {
 			now := time.Now()
 			for _, v := range rdbData.Keys {
-				kv := types.SetArg{
+				kv := types.KVEntry{
 					Value:     v.Value,
 					CreatedAt: now,
 				}
@@ -92,8 +93,13 @@ func main() {
 			fmt.Println("Failed to connect to master:", err)
 			os.Exit(1)
 		}
-		connectedClients[masterConn] = &types.Client{}
-		go handleConnection(masterConn, kvStore, listStore, streamStore, connectedClients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, true, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
+		clients[masterConn] = &types.Client{}
+		if slices.Contains(defaultUser.Flags, "nopass") {
+			clients[masterConn].Connected = true
+		} else {
+			clients[masterConn].Connected = false
+		}
+		go handleConnection(masterConn, kvStore, listStore, streamStore, clients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, true, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
 	}
 
 	// Start listening for connections on the specified port
@@ -117,13 +123,18 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		connectedClients[con] = &types.Client{}
-		go handleConnection(con, kvStore, listStore, streamStore, connectedClients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, false, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
+		clients[con] = &types.Client{}
+		if slices.Contains(defaultUser.Flags, "nopass") {
+			clients[con].Connected = true
+		} else {
+			clients[con].Connected = false
+		}
+		go handleConnection(con, kvStore, listStore, streamStore, clients, replicaConnections, listMutex, streamsMutex, blockingClients, *replicaof, masterReplicationID, false, &masterReplOffset, masterReplOffsetMutex, acks, *dbDir, *dbFileName, defaultUser, userMutex)
 	}
 }
 
 // handleConnection manages a single client connection.
-func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore map[string][]string, streamStore map[string][]types.StreamEntry, connectedClients map[net.Conn]*types.Client, replicaConnections *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any, replicaof string, masterReplicationID string, isReplica bool, masterReplOffset *int, masterReplOffsetMutex *sync.Mutex, acks chan int, dbDir, dbFileName string, defaultUser *types.User, userMutex *sync.Mutex) {
+func handleConnection(con net.Conn, kvStore map[string]types.KVEntry, listStore map[string][]string, streamStore map[string][]types.StreamEntry, clients map[net.Conn]*types.Client, replicaConnections *types.ReplicaConns, listMutex *sync.Mutex, streamsMutex *sync.Mutex, blockingClients map[string][]chan any, replicaof string, masterReplicationID string, isReplica bool, masterReplOffset *int, masterReplOffsetMutex *sync.Mutex, acks chan int, dbDir, dbFileName string, defaultUser *types.User, userMutex *sync.Mutex) {
 
 	defer func() {
 		if err := con.Close(); err != nil {
@@ -131,7 +142,7 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 		}
 	}()
 	reader := bufio.NewReader(con)
-	client := connectedClients[con]
+	client := clients[con]
 	replicaOffset := 0
 
 	// If this is a replica connection, perform the initial handshake.
@@ -180,6 +191,11 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 			return
 		}
 		if len(commands) == 0 {
+			continue
+		}
+
+		if !clients[con].Connected && strings.ToUpper(commands[0]) != "AUTH" {
+			con.Write([]byte("-NOAUTH Authentication required.\r\n"))
 			continue
 		}
 
@@ -281,7 +297,7 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 						replicaConnections.Unlock()
 					}
 				}
-				handlers.Exec(con, connectedClients, kvStore, listStore, streamStore, listMutex, streamsMutex, blockingClients)
+				handlers.Exec(con, clients, kvStore, listStore, streamStore, listMutex, streamsMutex, blockingClients)
 			} else {
 				response = "*0\r\n"
 				client.InMulti = false
@@ -305,7 +321,8 @@ func handleConnection(con net.Conn, kvStore map[string]types.SetArg, listStore m
 		case "ACL":
 			response = handlers.Acl(commands, defaultUser, userMutex)
 		case "AUTH":
-			response = handlers.Auth(commands, *defaultUser)
+			client := clients[con]
+			response = handlers.Auth(commands, *defaultUser, client)
 
 		default:
 			response = "-ERR unknown command\r\n"

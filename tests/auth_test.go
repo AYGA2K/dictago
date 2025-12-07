@@ -56,7 +56,8 @@ func TestAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := handlers.Auth(tt.commands, tt.user)
+			client := &types.Client{}
+			result := handlers.Auth(tt.commands, tt.user, client)
 			if result != tt.expected {
 				t.Errorf("For test case %s: Expected %q, got %q", tt.name, tt.expected, result)
 			}

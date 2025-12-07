@@ -11,7 +11,7 @@ import (
 
 func TestTransactionCommands(t *testing.T) {
 	client := &types.Client{}
-	m := make(map[string]types.SetArg)
+	m := make(map[string]types.KVEntry)
 	mlist := make(map[string][]string)
 	streams := make(map[string][]types.StreamEntry)
 	listMutex := &sync.Mutex{}
